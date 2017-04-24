@@ -888,6 +888,14 @@ static void kpatch_mark_ignored_sections(struct kpatch_elf *kelf)
 	struct rela *rela;
 	char *name;
 
+	/* Always ignore .discard sections */
+	sec = find_section_by_name(&kelf->sections, ".discard");
+	if (sec) {
+		sec->ignore = 1;
+		if (sec->twin)
+			sec->twin->ignore = 1;
+	}
+
 	sec = find_section_by_name(&kelf->sections, ".livepatch.ignore.sections");
 	if (!sec)
 		return;
