@@ -1102,6 +1102,22 @@ static struct special_section special_sections[] = {
 		.name		= ".livepatch.hooks.unload",
 		.group_size	= livepatch_hooks_group_size,
 	},
+	{
+		.name		= ".livepatch.hooks.preapply",
+		.group_size	= livepatch_hooks_group_size,
+	},
+	{
+		.name		= ".livepatch.hooks.postapply",
+		.group_size	= livepatch_hooks_group_size,
+	},
+	{
+		.name		= ".livepatch.hooks.prerevert",
+		.group_size	= livepatch_hooks_group_size,
+	},
+	{
+		.name		= ".livepatch.hooks.postrevert",
+		.group_size	= livepatch_hooks_group_size,
+	},
 	{},
 };
 
@@ -1465,23 +1481,44 @@ static void kpatch_include_debug_sections(struct kpatch_elf *kelf)
 	}
 }
 
-static void kpatch_include_hook_elements(struct kpatch_elf *kelf)
+#define IS_HOOK_SECTION(section, hook) ({ \
+        !strcmp(((section))->name, ".livepatch.hooks." hook) || \
+        !strcmp(((section))->name, ".rela.livepatch.hooks." hook); \
+})
+
+#define IS_ACTION_HOOK_SECTION(section, action) ({ \
+        IS_HOOK_SECTION(section, "pre" action) || \
+        IS_HOOK_SECTION(section, "post" action); \
+})
+
+#define IS_HOOK_SYM_NAME(symbol, hook) ({ \
+        !strcmp(((symbol))->name, "livepatch_" hook "_data"); \
+})
+
+#define IS_ACTION_HOOK_SYM_NAME(symbol, action) ({ \
+        IS_HOOK_SYM_NAME(symbol, "pre" action) || \
+        IS_HOOK_SYM_NAME(symbol, "post" action); \
+})
+
+static int kpatch_include_hook_elements(struct kpatch_elf *kelf)
 {
 	struct section *sec;
 	struct symbol *sym;
 	struct rela *rela;
+	int num_new_functions = 0;
 
-	/* include load/unload sections */
+	/* include all supported hooks sections */
 	list_for_each_entry(sec, &kelf->sections, list) {
-		if (!strcmp(sec->name, ".livepatch.hooks.load") ||
-		    !strcmp(sec->name, ".livepatch.hooks.unload") ||
-		    !strcmp(sec->name, ".rela.livepatch.hooks.load") ||
-		    !strcmp(sec->name, ".rela.livepatch.hooks.unload")) {
+		if (IS_HOOK_SECTION(sec, "load") ||
+		    IS_HOOK_SECTION(sec, "unload") ||
+		    IS_ACTION_HOOK_SECTION(sec, "apply") ||
+		    IS_ACTION_HOOK_SECTION(sec, "revert")) {
 			sec->include = 1;
+			num_new_functions++;
 			if (is_rela_section(sec)) {
 				/* include hook dependencies */
 				rela = list_entry(sec->relas.next,
-			                         struct rela, list);
+						  struct rela, list);
 				sym = rela->sym;
 				log_normal("found hook: %s\n",sym->name);
 				kpatch_include_symbol(sym, 0);
@@ -1497,13 +1534,17 @@ static void kpatch_include_hook_elements(struct kpatch_elf *kelf)
 	}
 
 	/*
-	 * Strip temporary global load/unload function pointer objects
-	 * used by the kpatch_[load|unload]() macros.
+	 * Strip temporary global function pointer objects for all
+	 * supported hooks, used by the kpatch_[load|unload]() macros.
 	 */
 	list_for_each_entry(sym, &kelf->symbols, list)
-		if (!strcmp(sym->name, "livepatch_load_data") ||
-		    !strcmp(sym->name, "livepatch_unload_data"))
+		if (IS_HOOK_SYM_NAME(sym, "load") ||
+		    IS_HOOK_SYM_NAME(sym, "unload") ||
+		    IS_ACTION_HOOK_SYM_NAME(sym, "apply") ||
+		    IS_ACTION_HOOK_SYM_NAME(sym, "revert"))
 			sym->include = 0;
+
+	return num_new_functions;
 }
 
 static int kpatch_include_new_globals(struct kpatch_elf *kelf)
@@ -2292,11 +2333,11 @@ int main(int argc, char *argv[])
 	kpatch_include_standard_elements(kelf_patched);
 	log_debug("Include changed functions\n");
 	num_changed = kpatch_include_changed_functions(kelf_patched);
-	log_debug("num_changed = %d\n", num_changed);
 	log_debug("Include debug sections\n");
 	kpatch_include_debug_sections(kelf_patched);
 	log_debug("Include hook elements\n");
-	kpatch_include_hook_elements(kelf_patched);
+	num_changed += kpatch_include_hook_elements(kelf_patched);
+	log_debug("num_changed = %d\n", num_changed);
 	log_debug("Include standard string elements\n");
 	kpatch_include_standard_string_elements(kelf_patched);
 	log_debug("Include new globals\n");
