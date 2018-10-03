@@ -30,6 +30,7 @@ DEBUG=n
 XEN_DEBUG=n
 SKIP=
 DEPENDS=
+XEN_DEPENDS=
 PRELINK=
 XENSYMS=xen-syms
 
@@ -163,6 +164,9 @@ function create_patch()
     # Create a dependency section
     perl -e "print pack 'VVVZ*H*', 4, 20, 3, 'GNU', '${DEPENDS}'" > depends.bin
 
+    # Create a Xen dependency section
+    perl -e "print pack 'VVVZ*H*', 4, 20, 3, 'GNU', '${XEN_DEPENDS}'" > xen_depends.bin
+
     echo "Creating patch module..."
     if [ -z "$PRELINK" ]; then
         ld -r -o "${PATCHNAME}.livepatch" --build-id=sha1 $(find output -type f -name "*.o") || die
@@ -174,6 +178,9 @@ function create_patch()
 
     objcopy --add-section .livepatch.depends=depends.bin "${PATCHNAME}.livepatch"
     objcopy --set-section-flags .livepatch.depends=alloc,readonly "${PATCHNAME}.livepatch"
+
+    objcopy --add-section .livepatch.xen_depends=xen_depends.bin "${PATCHNAME}.livepatch"
+    objcopy --set-section-flags .livepatch.xen_depends=alloc,readonly "${PATCHNAME}.livepatch"
 }
 
 usage() {
@@ -189,12 +196,13 @@ usage() {
     echo "        --xen-debug        Build debug Xen (if your .config does not have the options)" >&2
     echo "        --xen-syms         Build against a xen-syms" >&2
     echo "        --depends          Required build-id" >&2
+    echo "        --xen-depends      Required Xen build-id" >&2
     echo "        --prelink          Prelink" >&2
 }
 
 find_tools || die "can't find supporting tools"
 
-options=$(getopt -o hs:p:c:o:j:k:d -l "help,srcdir:,patch:,config:,output:,cpus:,skip:,debug,xen-debug,xen-syms:,depends:,prelink" -- "$@") || die "getopt failed"
+options=$(getopt -o hs:p:c:o:j:k:d -l "help,srcdir:,patch:,config:,output:,cpus:,skip:,debug,xen-debug,xen-syms:,depends:,xen-depends:,prelink" -- "$@") || die "getopt failed"
 
 eval set -- "$options"
 
@@ -253,6 +261,11 @@ while [[ $# -gt 0 ]]; do
             DEPENDS="$1"
             shift
             ;;
+        --xen-depends)
+            shift
+            XEN_DEPENDS="$1"
+            shift
+            ;;
         --prelink)
             PRELINK=--resolve
             shift
@@ -269,6 +282,7 @@ done
 [ -z "$configarg" ] && die ".config not given"
 [ -z "$outputarg" ] && die "Output directory not given"
 [ -z "$DEPENDS" ] && die "Build-id dependency not given"
+[ -z "$XEN_DEPENDS" ] && die "Xen Build-id dependency not given"
 
 SRCDIR="$(readlink -m -- "$srcarg")"
 # We need an absolute path because we move around, but we need to
