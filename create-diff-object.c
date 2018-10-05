@@ -2018,6 +2018,7 @@ static void livepatch_create_patches_sections(struct kpatch_elf *kelf,
 			memset(funcs[index].pad, 0, sizeof funcs[index].pad);
 			funcs[index].applied = 0;
 			memset(funcs[index]._pad, 0, sizeof funcs[index]._pad);
+			memset(&funcs[index].expect, 0, sizeof funcs[index].expect);
 
 			/*
 			 * Add a relocation that will populate

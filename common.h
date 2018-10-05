@@ -115,6 +115,14 @@ struct kpatch_elf {
 };
 
 #define PATCH_INSN_SIZE 5
+#define MAX_REPLACEMENT_SIZE 31
+struct livepatch_expectation {
+	uint8_t enabled : 1;
+	uint8_t len : 5;
+	uint8_t pad : 2;
+	uint8_t data[MAX_REPLACEMENT_SIZE];
+};
+typedef struct livepatch_expectation livepatch_expectation_t;
 
 struct livepatch_patch_func {
 	char *name;
@@ -123,9 +131,10 @@ struct livepatch_patch_func {
 	uint32_t new_size;
 	uint32_t old_size;
 	uint8_t version;
-	unsigned char pad[31];
+	unsigned char pad[MAX_REPLACEMENT_SIZE];
 	uint8_t applied;
 	uint8_t _pad[7];
+	livepatch_expectation_t expect;
 };
 
 struct special_section {
