@@ -2014,8 +2014,10 @@ static void livepatch_create_patches_sections(struct kpatch_elf *kelf,
 			funcs[index].old_size = result.size;
 			funcs[index].new_addr = 0;
 			funcs[index].new_size = sym->sym.st_size;
-			funcs[index].version = 1;
+			funcs[index].version = 2;
 			memset(funcs[index].pad, 0, sizeof funcs[index].pad);
+			funcs[index].applied = 0;
+			memset(funcs[index]._pad, 0, sizeof funcs[index]._pad);
 
 			/*
 			 * Add a relocation that will populate

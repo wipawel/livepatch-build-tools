@@ -124,6 +124,8 @@ struct livepatch_patch_func {
 	uint32_t old_size;
 	uint8_t version;
 	unsigned char pad[31];
+	uint8_t applied;
+	uint8_t _pad[7];
 };
 
 struct special_section {
