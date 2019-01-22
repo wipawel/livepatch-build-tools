@@ -111,10 +111,39 @@ function build_special()
     unset LIVEPATCH_CAPTURE_DIR
 }
 
-strip_extra_symbols ()
+elf_section_exists ()
+{
+    local ELF="$1"
+    local SEC="$2"
+
+    objdump -h -j "$SEC" "$ELF" &> /dev/null
+}
+
+# Extract a set of unique symbols for a specified section.
+elf_extract_section_symbols ()
+{
+    local -r ELF="$1"
+    local -r SEC="$2"
+
+    if elf_section_exists "$ELF" "$SEC"
+    then
+        # Example objdump command output to be parsed:
+        #
+        # SYMBOL TABLE:
+        # 0000000000000000 l    d  .livepatch.funcs    0000000000000000 .livepatch.funcs
+        objdump -w -j "$SEC" -t "$ELF" | awk '/^SYMBOL TABLE:/ {seen = 1; next} seen && $NF {print $NF}' | sort -u
+    fi
+}
+
+# Strip all metadata symbols belonging to a metadata section
+# or whose name starts with a livepatch hook prefix.
+# The function constructs the 'strip' utility command line
+# and then invokes strip with that command line.
+strip_metadata_symbols ()
 {
     local -r FILE="$1"
     local -a STRIP_CMD_OPTS=()
+    local -a SYM_SECTIONS=(".livepatch.funcs")
     local -a SYM_PREFIX=("livepatch_load_data_"
                          "livepatch_unload_data_"
                          "livepatch_preapply_data_"
@@ -123,12 +152,34 @@ strip_extra_symbols ()
                          "livepatch_prerevert_data_"
                          "livepatch_revert_data_"
                          "livepatch_postrevert_data_")
+    local -a SYMS=()
 
+    # Enable wildcard
     STRIP_CMD_OPTS+=("-w")
+
+    # Strip all livepatch hooks metadata symbols
     for sym in "${SYM_PREFIX[@]}"; do
         STRIP_CMD_OPTS+=("-N")
         STRIP_CMD_OPTS+=("\"${sym}*\"")
     done
+
+    # Find all symbols from metadata sections
+    # Note: There may be name conflicts between global
+    # and local symbols belonging to the same section.
+    # For the '.livepatch.funcs' section it is not a
+    # problem. Think about it before adding more sections.
+    for sec in "${SYM_SECTIONS[@]}"; do
+        SYMS+=($(elf_extract_section_symbols "$FILE" "$sec"))
+    done
+
+    # Strip metadata sections' symbols
+    if [ ${#SYMS[@]} -gt 0 ]
+    then
+        for sym in "${SYMS[@]}"; do
+            STRIP_CMD_OPTS+=("-N")
+            STRIP_CMD_OPTS+=("${sym}")
+        done
+    fi
 
     strip "${STRIP_CMD_OPTS[@]}" "$FILE"
 }
@@ -199,7 +250,7 @@ function create_patch()
         "${TOOLSDIR}"/prelink $debugopt output.o "${PATCHNAME}.livepatch" "$XENSYMS" &>> "${OUTPUT}/prelink.log" || die
     fi
 
-    strip_extra_symbols "${PATCHNAME}.livepatch"
+    strip_metadata_symbols "${PATCHNAME}.livepatch"
 
     objcopy --add-section .livepatch.depends=depends.bin "${PATCHNAME}.livepatch"
     objcopy --set-section-flags .livepatch.depends=alloc,readonly "${PATCHNAME}.livepatch"
