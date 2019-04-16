@@ -1118,6 +1118,14 @@ static struct special_section special_sections[] = {
 		.name		= ".livepatch.hooks.postrevert",
 		.group_size	= livepatch_hooks_group_size,
 	},
+	{
+		.name		= ".livepatch.hooks.apply",
+		.group_size	= livepatch_hooks_group_size,
+	},
+	{
+		.name		= ".livepatch.hooks.revert",
+		.group_size	= livepatch_hooks_group_size,
+	},
 	{},
 };
 
@@ -1488,6 +1496,7 @@ static void kpatch_include_debug_sections(struct kpatch_elf *kelf)
 
 #define IS_ACTION_HOOK_SECTION(section, action) ({ \
         IS_HOOK_SECTION(section, "pre" action) || \
+        IS_HOOK_SECTION(section, action) || \
         IS_HOOK_SECTION(section, "post" action); \
 })
 
@@ -1497,6 +1506,7 @@ static void kpatch_include_debug_sections(struct kpatch_elf *kelf)
 
 #define IS_ACTION_HOOK_SYM_NAME(symbol, action) ({ \
         IS_HOOK_SYM_NAME(symbol, "pre" action) || \
+        IS_HOOK_SYM_NAME(symbol, action) || \
         IS_HOOK_SYM_NAME(symbol, "post" action); \
 })
 
