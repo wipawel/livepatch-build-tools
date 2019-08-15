@@ -1,0 +1,11 @@
+This file follows the same conventions as outlined in
+xen.git:MAINTAINERS. Please refer to the file in xen.git
+for more information.
+
+THE REST
+M:	Konrad Rzeszutek Wilk <konrad.wilk@oracle.com>
+M:	Ross Lagerwall <ross.lagerwall@citrix.com>
+L:	xen-devel@lists.xenproject.org
+S:	Supported
+F:	*
+F:	*/
