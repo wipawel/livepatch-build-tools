@@ -1045,6 +1045,18 @@ static struct special_section special_sections[] = {
 	{},
 };
 
+static int is_special_section(const struct section *sec)
+{
+	struct special_section *special;
+
+	for (special = special_sections; special->name; special++) {
+		if (!strcmp(sec->name, special->name))
+			return true;
+	}
+
+	return false;
+}
+
 static int should_keep_rela_group(struct section *sec, int start, int size)
 {
 	struct rela *rela;
