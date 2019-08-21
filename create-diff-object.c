@@ -1278,9 +1278,7 @@ static void kpatch_include_standard_elements(struct kpatch_elf *kelf)
 
 	list_for_each_entry(sec, &kelf->sections, list) {
 		/* include these sections even if they haven't changed */
-		if (!strcmp(sec->name, ".shstrtab") ||
-		    !strcmp(sec->name, ".strtab") ||
-		    !strcmp(sec->name, ".symtab") ||
+		if (is_standard_section(sec) ||
 		    should_include_str_section(sec->name)) {
 			sec->include = 1;
 			if (sec->secsym)

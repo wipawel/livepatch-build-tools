@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdbool.h>
 #include <gelf.h>
 
 #include "list.h"
@@ -256,6 +257,17 @@ int is_debug_section(struct section *sec)
 	else
 		name = sec->name;
 	return !strncmp(name, ".debug_", 7);
+}
+
+int is_standard_section(struct section *sec)
+{
+	switch (sec->sh.sh_type) {
+	case SHT_STRTAB:
+	case SHT_SYMTAB:
+		return true;
+	default:
+		return false;
+	}
 }
 
 /* returns the offset of the string in the string table */
