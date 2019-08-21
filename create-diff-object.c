@@ -958,12 +958,42 @@ static void kpatch_mark_constant_labels_same(struct kpatch_elf *kelf)
 	}
 }
 
-static int bug_frames_0_group_size(struct kpatch_elf *kelf, int offset) { return 8; }
-static int bug_frames_1_group_size(struct kpatch_elf *kelf, int offset) { return 8; }
-static int bug_frames_2_group_size(struct kpatch_elf *kelf, int offset) { return 8; }
-static int bug_frames_3_group_size(struct kpatch_elf *kelf, int offset) { return 16; }
-static int ex_table_group_size(struct kpatch_elf *kelf, int offset) { return 8; }
-static int altinstructions_group_size(struct kpatch_elf *kelf, int offset) { return 12; }
+static int bug_frames_group_size(struct kpatch_elf *kelf, int offset)
+{
+	static int size = 0;
+	char *str;
+	if (!size) {
+		str = getenv("BUG_STRUCT_SIZE");
+		size = str ? atoi(str) : 8;
+	}
+
+	return size;
+}
+
+static int ex_table_group_size(struct kpatch_elf *kelf, int offset)
+{
+	static int size = 0;
+	char *str;
+	if (!size) {
+		str = getenv("EX_STRUCT_SIZE");
+		size = str ? atoi(str) : 8;
+	}
+
+	return size;
+}
+
+static int altinstructions_group_size(struct kpatch_elf *kelf, int offset)
+{
+	static int size = 0;
+	char *str;
+	if (!size) {
+		str = getenv("ALT_STRUCT_SIZE");
+		size = str ? atoi(str) : 12;
+	}
+
+	log_debug("altinstr_size=%d\n", size);
+	return size;
+}
 
 /*
  * The rela groups in the .fixup section vary in size.  The beginning of each
@@ -1016,19 +1046,19 @@ static int fixup_group_size(struct kpatch_elf *kelf, int offset)
 static struct special_section special_sections[] = {
 	{
 		.name		= ".bug_frames.0",
-		.group_size	= bug_frames_0_group_size,
+		.group_size	= bug_frames_group_size,
 	},
 	{
 		.name		= ".bug_frames.1",
-		.group_size	= bug_frames_1_group_size,
+		.group_size	= bug_frames_group_size,
 	},
 	{
 		.name		= ".bug_frames.2",
-		.group_size	= bug_frames_2_group_size,
+		.group_size	= bug_frames_group_size,
 	},
 	{
 		.name		= ".bug_frames.3",
-		.group_size	= bug_frames_3_group_size,
+		.group_size	= bug_frames_group_size,
 	},
 	{
 		.name		= ".fixup",

@@ -315,6 +315,28 @@ if [ "${SKIP}" != "build" ]; then
     echo "Perform full initial build with ${CPUS} CPU(s)..."
     build_full
 
+    echo "Reading special section data"
+    # Using xen-syms built in the previous step by build_full().
+    SPECIAL_VARS=$(readelf -wi "$OUTPUT/xen-syms" |
+               gawk --non-decimal-data '
+               BEGIN { a = b = e = 0 }
+               a == 0 && /DW_AT_name.* alt_instr/ {a = 1; next}
+               b == 0 && /DW_AT_name.* bug_frame/ {b = 1; next}
+               e == 0 && /DW_AT_name.* exception_table_entry/ {e = 1; next}
+               a == 1 {printf("export ALT_STRUCT_SIZE=%d\n", $4); a = 2}
+               b == 1 {printf("export BUG_STRUCT_SIZE=%d\n", $4); b = 2}
+               e == 1 {printf("export EX_STRUCT_SIZE=%d\n", $4); e = 2}
+               a == 2 && b == 2 && e == 2 {exit}')
+    [[ -n $SPECIAL_VARS ]] && eval "$SPECIAL_VARS"
+    if [[ -z $ALT_STRUCT_SIZE ]] || [[ -z $BUG_STRUCT_SIZE ]] || [[ -z $EX_STRUCT_SIZE ]]; then
+        die "can't find special struct size"
+    fi
+    for i in $ALT_STRUCT_SIZE $BUG_STRUCT_SIZE $EX_STRUCT_SIZE; do
+        if [[ ! $i -gt 0 ]] || [[ ! $i -le 16 ]]; then
+            die "invalid special struct size $i"
+        fi
+    done
+
     echo "Apply patch and build with ${CPUS} CPU(s)..."
     cd "$SRCDIR" || die
     patch -s -N -p1 -f --fuzz=0 < "$PATCHFILE" || die
