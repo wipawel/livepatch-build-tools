@@ -35,6 +35,8 @@ if [[ "$TOOLCHAINCMD" =~ $GCC_RE ]] ; then
             version.o|\
             debug.o|\
             *.xen-syms.*.o|\
+            built_in.o|\
+            prelink.o|\
             .*.o)
                 break
                 ;;
