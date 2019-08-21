@@ -265,7 +265,9 @@ done
 [ -z "$DEPENDS" ] && die "Build-id dependency not given"
 
 SRCDIR="$(readlink -m -- "$srcarg")"
-PATCHFILE="$(readlink -m -- "$patcharg")"
+# We need an absolute path because we move around, but we need to
+# retain the name of the symlink (= realpath -s)
+PATCHFILE="$(readlink -f "$(dirname "$patcharg")")/$(basename "$patcharg")"
 CONFIGFILE="$(readlink -m -- "$configarg")"
 OUTPUT="$(readlink -m -- "$outputarg")"
 
