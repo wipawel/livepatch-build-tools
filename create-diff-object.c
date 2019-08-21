@@ -995,6 +995,24 @@ static int altinstructions_group_size(struct kpatch_elf *kelf, int offset)
 	return size;
 }
 
+static int livepatch_hooks_group_size(struct kpatch_elf *kelf, int offset)
+{
+	static int size = 0;
+	char *str;
+	if (!size) {
+		str = getenv("HOOK_STRUCT_SIZE");
+		size = str ? atoi(str) : 8;
+	}
+
+	log_debug("livepatch_hooks_size=%d\n", size);
+	return size;
+}
+
+static int undefined_group_size(struct kpatch_elf *kelf, int offset)
+{
+	return 0;
+}
+
 /*
  * The rela groups in the .fixup section vary in size.  The beginning of each
  * .fixup rela group is referenced by the .ex_table section. To find the size
@@ -1072,6 +1090,18 @@ static struct special_section special_sections[] = {
 		.name		= ".altinstructions",
 		.group_size	= altinstructions_group_size,
 	},
+	{
+		.name		= ".altinstr_replacement",
+		.group_size	= undefined_group_size,
+	},
+	{
+		.name		= ".livepatch.hooks.load",
+		.group_size	= livepatch_hooks_group_size,
+	},
+	{
+		.name		= ".livepatch.hooks.unload",
+		.group_size	= livepatch_hooks_group_size,
+	},
 	{},
 };
 
@@ -1142,6 +1172,15 @@ static void kpatch_regenerate_special_section(struct kpatch_elf *kelf,
 
 	LIST_HEAD(newrelas);
 
+	src_offset = 0;
+	dest_offset = 0;
+	group_size = special->group_size(kelf, src_offset);
+	if (group_size == 0) {
+		log_normal("Skipping regeneration of a special section: %s\n",
+			   special->name);
+		return;
+	}
+
 	src = sec->base->data->d_buf;
 	/* alloc buffer for new base section */
 	dest = malloc(sec->base->sh.sh_size);
@@ -1156,9 +1195,6 @@ static void kpatch_regenerate_special_section(struct kpatch_elf *kelf,
 		}
 	}
 
-	group_size = 0;
-	src_offset = 0;
-	dest_offset = 0;
 	for ( ; src_offset < sec->base->sh.sh_size; src_offset += group_size) {
 
 		group_size = special->group_size(kelf, src_offset);
