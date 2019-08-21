@@ -25,7 +25,8 @@ shift
 declare -a args=("$@")
 keep=no
 
-if [[ "$TOOLCHAINCMD" = "gcc" ]] ; then
+declare -r GCC_RE='gcc.*'
+if [[ "$TOOLCHAINCMD" =~ $GCC_RE ]] ; then
     while [ "$#" -gt 0 ]; do
         if [ "$1" = "-o" ]; then
             obj=$2
