@@ -146,6 +146,12 @@ function create_patch()
         fi
     done
 
+    NEW_FILES=$(comm -23 <(cd patched/xen && find . -type f -name '*.o' | sort) <(cd original/xen && find . -type f -name '*.o' | sort))
+    for i in $NEW_FILES; do
+        cp "patched/$i" "output/$i"
+        CHANGED=1
+    done
+
     if [[ $ERROR -ne 0 ]]; then
         die "$ERROR error(s) encountered"
     fi
