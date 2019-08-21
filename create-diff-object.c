@@ -1536,6 +1536,61 @@ static void kpatch_print_changes(struct kpatch_elf *kelf)
 	}
 }
 
+static inline int get_section_entry_size(const struct section *sec,
+					 struct kpatch_elf *kelf)
+{
+	int entry_size;
+
+	/*
+	 * Base sections typically do not define fixed size elements.
+	 * Detect section's element size in case it's a special section.
+	 * Otherwise, skip it due to an unknown sh_entsize.
+	 */
+	entry_size = sec->sh.sh_entsize;
+	if (entry_size == 0) {
+		struct special_section *special;
+
+		/* Find special section group_size. */
+		for (special = special_sections; special->name; special++) {
+			if (!strcmp(sec->name, special->name))
+				return special->group_size(kelf, 0);
+		}
+        }
+
+	return entry_size;
+}
+
+static int kpatch_section_has_undef_symbols(struct kpatch_elf *kelf,
+					    const struct section *sec)
+{
+	int offset, entry_size;
+	struct rela *rela;
+	size_t d_size;
+
+	entry_size = get_section_entry_size(sec, kelf);
+	if (entry_size == 0)
+		return false;
+
+	d_size = sec->base->data->d_size;
+	for (offset = 0; offset < d_size; offset += entry_size) {
+		list_for_each_entry(rela, &sec->relas, list) {
+			if (rela->offset < offset ||
+			    rela->offset >= offset + entry_size) {
+				continue;
+			}
+
+			if ((GELF_R_SYM(rela->rela.r_info) == STN_UNDEF) ||
+			    (!rela->sym->include && rela->sym->status == SAME)) {
+				log_normal("section %s has an entry with an undefined symbol: %s\n",
+					   sec->name, rela->sym->name ?: "none");
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
 static void kpatch_verify_patchability(struct kpatch_elf *kelf)
 {
 	struct section *sec;
@@ -1567,6 +1622,17 @@ static void kpatch_verify_patchability(struct kpatch_elf *kelf)
 						   sec->name);
 					errs++;
 				}
+			}
+
+			/* Check if a RELA section does not contain any entries with
+			 * undefined symbols (STN_UNDEF). This situation can happen
+			 * when a section is copied over from its original object to
+			 * a patched object, but various symbols related to the section
+			 * are not copied along.
+			 */
+			if (is_rela_section(sec)) {
+				if (kpatch_section_has_undef_symbols(kelf, sec))
+					errs++;
 			}
 		}
 
