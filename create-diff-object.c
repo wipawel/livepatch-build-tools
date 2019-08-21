@@ -1843,6 +1843,11 @@ static void livepatch_create_patches_sections(struct kpatch_elf *kelf,
 		if (sym->type == STT_FUNC && sym->status == CHANGED)
 			nr++;
 
+	if (nr == 0) {
+		log_debug("No changed functions found. Skipping .livepatch.funcs section creation\n");
+		return;
+	}
+
 	/* create text/rela section pair */
 	sec = create_section_pair(kelf, ".livepatch.funcs", sizeof(*funcs), nr);
 	relasec = sec->rela;
