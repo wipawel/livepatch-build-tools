@@ -1321,14 +1321,13 @@ static bool isnumber(const char *s)
 }
 
 /*
- * String sections are always included even if unchanged.
- * The format is either:
+ * The format of string sections is either:
  * .rodata.<func>.str1.[0-9]+ (new in GCC 6.1.0)
  * or .rodata.str1.[0-9]+ (older versions of GCC)
- * For the new format we could be smarter and only include the needed
- * strings sections.
+ * For the new format we only include the needed strings sections.
+ * For the old format all string sections are always included.
  */
-static bool should_include_str_section(const char *name)
+static bool is_rodata_str_section(const char *name)
 {
 #define GCC_5_SECTION_NAME ".rodata.str1."
 #define GCC_6_SECTION_NAME ".str1."
@@ -1356,8 +1355,7 @@ static void kpatch_include_standard_elements(struct kpatch_elf *kelf)
 
 	list_for_each_entry(sec, &kelf->sections, list) {
 		/* include these sections even if they haven't changed */
-		if (is_standard_section(sec) ||
-		    should_include_str_section(sec->name)) {
+		if (is_standard_section(sec)) {
 			sec->include = 1;
 			if (sec->secsym)
 				sec->secsym->include = 1;
@@ -1366,6 +1364,20 @@ static void kpatch_include_standard_elements(struct kpatch_elf *kelf)
 
 	/* include the NULL symbol */
 	list_entry(kelf->symbols.next, struct symbol, list)->include = 1;
+}
+
+static void kpatch_include_standard_string_elements(struct kpatch_elf *kelf)
+{
+	struct section *sec;
+
+	list_for_each_entry(sec, &kelf->sections, list) {
+		if (is_rodata_str_section(sec->name) &&
+		    is_referenced_section(sec, kelf)) {
+			sec->include = 1;
+			if (sec->secsym)
+				sec->secsym->include = 1;
+		}
+	}
 }
 
 #define inc_printf(fmt, ...) \
@@ -1545,6 +1557,17 @@ static void kpatch_verify_patchability(struct kpatch_elf *kelf)
 		if (sec->sh.sh_type == SHT_GROUP && sec->status == NEW) {
 			log_normal("new/changed group sections are not supported\n");
 			errs++;
+		}
+
+		if (sec->include) {
+			if (!is_standard_section(sec) && !is_rela_section(sec) &&
+			    !is_debug_section(sec) && !is_special_section(sec)) {
+				if (!is_referenced_section(sec, kelf)) {
+					log_normal("section %s included, but not referenced\n",
+						   sec->name);
+					errs++;
+				}
+			}
 		}
 
 		/*
@@ -2078,6 +2101,8 @@ int main(int argc, char *argv[])
 	kpatch_include_debug_sections(kelf_patched);
 	log_debug("Include hook elements\n");
 	kpatch_include_hook_elements(kelf_patched);
+	log_debug("Include standard string elements\n");
+	kpatch_include_standard_string_elements(kelf_patched);
 	log_debug("Include new globals\n");
 	new_globals_exist = kpatch_include_new_globals(kelf_patched);
 	log_debug("new_globals_exist = %d\n", new_globals_exist);
