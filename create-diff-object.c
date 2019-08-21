@@ -1560,6 +1560,13 @@ static inline int get_section_entry_size(const struct section *sec,
 	return entry_size;
 }
 
+/* Check if RELA entry has undefined or unchanged/not-included symbols. */
+static inline bool has_rela_undefined_symbol(const struct rela *rela)
+{
+	return (GELF_R_SYM(rela->rela.r_info) == STN_UNDEF) ||
+	       (!rela->sym->include && (rela->sym->status == SAME));
+}
+
 static int kpatch_section_has_undef_symbols(struct kpatch_elf *kelf,
 					    const struct section *sec)
 {
@@ -1579,8 +1586,7 @@ static int kpatch_section_has_undef_symbols(struct kpatch_elf *kelf,
 				continue;
 			}
 
-			if ((GELF_R_SYM(rela->rela.r_info) == STN_UNDEF) ||
-			    (!rela->sym->include && rela->sym->status == SAME)) {
+			if (has_rela_undefined_symbol(rela)) {
 				log_normal("section %s has an entry with an undefined symbol: %s\n",
 					   sec->name, rela->sym->name ?: "none");
 				return true;
@@ -1994,6 +2000,125 @@ static void livepatch_create_patches_sections(struct kpatch_elf *kelf,
 
 }
 
+/*
+ * The patched ELF object file contains all sections and symbols as resulted
+ * from the compilation. However, certain symbols may not be copied over to
+ * the resulting object file, due to being unchanged or not included for other
+ * reasons.
+ * In such situation the resulting object file has the entire sections copied
+ * along (with all their entries unchanged), while some of the corresponding
+ * symbols are not copied along at all.
+ * This leads to having incorrect dummy (STN_UNDEF) entries in the final
+ * hotpatch ELF file.
+ * This functions removes all undefined entries of known size from both
+ * RELA and PROGBITS sections of the patched elf object.
+ */
+static void livepatch_strip_undefined_elements(struct kpatch_elf *kelf)
+{
+	struct section *sec;
+
+	list_for_each_entry(sec, &kelf->sections, list) {
+		struct rela *rela, *safe;
+		int src_offset = 0, dst_offset = 0;
+		int entry_size, align, aligned_size;
+		char *src, *dst;
+		LIST_HEAD(newrelas);
+
+		/* use RELA section to find all its undefined entries */
+		if (!is_rela_section(sec))
+			continue;
+
+		/* only known, fixed-size entries can be stripped */
+		entry_size = get_section_entry_size(sec->base, kelf);
+		if (entry_size == 0)
+			continue;
+
+		/* alloc buffer for new base section */
+		dst = malloc(sec->base->sh.sh_size);
+		if (!dst)
+			ERROR("malloc");
+
+		/*
+		 * Iterate through all entries of a corresponding base section
+		 * for this RELA section.
+		 */
+		for ( src = sec->base->data->d_buf;
+		      src_offset < sec->base->sh.sh_size;
+		      src_offset += entry_size ) {
+			bool found_valid = false;
+
+			list_for_each_entry_safe(rela, safe, &sec->relas, list) {
+				/*
+				 * Check all RELA elements looking for
+				 * corresponding entry references.
+				 */
+				if (rela->offset < src_offset ||
+				    rela->offset >= src_offset + entry_size) {
+					continue;
+				}
+
+				/*
+				 * Ignore all undefined (STN_UNDEF) or
+				 * unchanged/not-included elements.
+				 */
+				if (has_rela_undefined_symbol(rela)) {
+					log_normal("Found a STN_UNDEF symbol %s in section %s\n",
+						   rela->sym->name, sec->name);
+					continue;
+				}
+
+				/*
+				 * A correct match has been found, so move it
+				 * to a new list. Original list will be destroyed
+				 * along with the entire kelf object, so the
+				 * reference must be preserved.
+				 */
+				found_valid = true;
+				list_del(&rela->list);
+				list_add_tail(&rela->list, &newrelas);
+
+				rela->offset -= src_offset - dst_offset;
+				rela->rela.r_offset = rela->offset;
+			}
+
+			/* there is a valid RELA entry, so copy current entry */
+			if (found_valid) {
+				/* copy base section group */
+				memcpy(dst + dst_offset, src + src_offset, entry_size);
+				dst_offset += entry_size;
+			}
+		}
+
+		/* verify that entry_size is a divisor of aligned section size */
+		align = sec->base->sh.sh_addralign;
+		aligned_size = ((sec->base->sh.sh_size + align - 1) / align) * align;
+		if (src_offset != aligned_size) {
+			ERROR("group size mismatch for section %s\n",
+			      sec->base->name);
+		}
+
+		if (!dst_offset) {
+			/* no changed or global functions referenced */
+			sec->status = sec->base->status = SAME;
+			sec->include = sec->base->include = 0;
+			free(dst);
+			continue;
+		}
+
+		/* overwrite with new relas list */
+		list_replace(&newrelas, &sec->relas);
+
+		/*
+		 * Update text section data buf and size.
+		 *
+		 * The rela section's data buf and size will be
+		 * regenerated in kpatch_rebuild_rela_section_data().
+		 */
+		sec->base->data->d_buf = dst;
+		sec->base->data->d_size = dst_offset;
+	}
+}
+
 static int is_null_sym(struct symbol *sym)
 {
 	return !strlen(sym->name);
@@ -2190,6 +2315,8 @@ int main(int argc, char *argv[])
 
 	log_debug("Process special sections\n");
 	kpatch_process_special_sections(kelf_patched);
+	log_debug("Strip undefined elements of known size\n");
+	livepatch_strip_undefined_elements(kelf_patched);
 	log_debug("Verify patchability\n");
 	kpatch_verify_patchability(kelf_patched);
 
