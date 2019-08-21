@@ -151,6 +151,8 @@ int is_text_section(struct section *sec);
 int is_debug_section(struct section *sec);
 int is_rela_section(struct section *sec);
 int is_standard_section(struct section *sec);
+int is_referenced_section(const struct section *sec,
+			  const struct kpatch_elf *kelf);
 int is_local_sym(struct symbol *sym);
 
 void rela_insn(struct section *sec, struct rela *rela, struct insn *insn);

@@ -15,7 +15,7 @@
 
 int is_rela_section(struct section *sec)
 {
-	return (sec->sh.sh_type == SHT_RELA);
+	return sec && (sec->sh.sh_type == SHT_RELA);
 }
 
 int is_local_sym(struct symbol *sym)
@@ -268,6 +268,27 @@ int is_standard_section(struct section *sec)
 	default:
 		return false;
 	}
+}
+
+int is_referenced_section(const struct section *sec,
+			  const struct kpatch_elf *kelf)
+{
+	struct symbol *sym;
+
+	if (is_rela_section(sec->rela) && sec->rela->include)
+		return true;
+
+	list_for_each_entry(sym, &kelf->symbols, list) {
+		if (!sym->include || !sym->sec)
+			continue;
+		/* Ignore section associated sections */
+		if (sym->type == STT_SECTION)
+			continue;
+		if (sym->sec->index == sec->index)
+			return true;
+	}
+
+	return false;
 }
 
 /* returns the offset of the string in the string table */
