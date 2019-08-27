@@ -140,7 +140,7 @@ function create_patch()
             die "no core file found, run 'ulimit -c unlimited' and try to recreate"
         fi
         # create-diff-object returns 3 if no functional change is found
-        [[ $rc -eq 0 ]] || [[ $rc -eq 3 ]] || ERROR=$(expr $ERROR "+" 1)
+        [[ $rc -eq 0 ]] || [[ $rc -eq 3 ]] || { ERROR=$(expr $ERROR "+" 1); warn "create-diff-object $i rc $rc"; }
         if [[ $rc -eq 0 ]]; then
             CHANGED=1
         fi
